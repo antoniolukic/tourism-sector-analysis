@@ -1,0 +1,878 @@
+---
+title: "Mobilnost turista i poslovanje hrvatskog turističkog sektora"
+author: "Ivan Kapusta, Antonio Lukić, David Supančić, Leon Stjepan Uroić"
+subtitle: "tim Paranormalna distribucija"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true    
+  html_document: default
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(readr)
+library(stringr)
+library(gridExtra)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+library(nortest)
+library(knitr)
+library(MASS)
+library(ggcorrplot)
+library(fastDummies)
+library(boot)
+library(zoo)
+pdf.options(encoding='ISOLatin2.enc')
+```
+
+```{r, include = FALSE}
+
+#učitavanje cijena
+
+cijeneARNTPath <- "cijene/ARNT.csv"
+cijeneHIMRPath <- "cijene/HIMR.csv"
+cijeneMAISPath <- "cijene/MAIS.csv"
+cijeneRIVPPath <- "cijene/RIVP.csv"
+cijeneCROBEXPath <- "cijene/CROBEXturist.csv"
+
+ARNTCijeneDf <- read.csv(cijeneARNTPath, fileEncoding = "UTF-8")
+HIMRCijeneDf <- read.csv(cijeneHIMRPath, fileEncoding = "UTF-8")
+MAISCijeneDf <- read.csv(cijeneMAISPath, fileEncoding = "UTF-8")
+RIVPCijeneDf <- read.csv(cijeneRIVPPath, fileEncoding = "UTF-8")
+CROBEXCijeneDf <- read.csv(cijeneCROBEXPath, fileEncoding = "UTF-8")
+ARNTExtendedDf <- read.csv("ARNT_sales_extended.csv", fileEncoding = "UTF-8")
+
+#učitavanje domaćeg prometa
+
+domaciIzlazSredstvaPath <- "domaci_promet/domaci_izlaz_prometna_sredstva.csv"
+domaciIzlazPutniciPath <- "domaci_promet/domaci_izlaz_putnici.csv"
+domaciUlazSredstvaPath <- "domaci_promet/domaci_ulaz_prometna_sredstva.csv"
+domaciUlazPutniciPath <- "domaci_promet/domaci_ulaz_putnici.csv"
+
+domaciIzlazSredstvaDf <- read.csv(domaciIzlazSredstvaPath, fileEncoding = "UTF-8")
+domaciIzlazPutniciDf <- read.csv(domaciIzlazPutniciPath, fileEncoding = "UTF-8")
+domaciUlazSredstvaDf <- read.csv(domaciUlazSredstvaPath, fileEncoding = "UTF-8")
+domaciUlazPutniciDf <- read.csv(domaciUlazPutniciPath, fileEncoding = "UTF-8")
+
+#učitavanje stranog prometa
+straniIzlazSredstvaPath <- "strani_promet/strani_izlaz_prometna_sredstva.csv"
+straniIzlazPutniciPath <- "strani_promet/strani_izlaz_putnici.csv"
+straniUlazSredstvaPath <- "strani_promet/strani_ulaz_prometna_sredstva.csv"
+straniUlazPutniciPath <- "strani_promet/strani_ulaz_putnici.csv"
+
+straniIzlazSredstvaDf <- read.csv(straniIzlazSredstvaPath, fileEncoding = "UTF-8")
+straniIzlazPutniciDf <- read.csv(straniIzlazPutniciPath, fileEncoding = "UTF-8")
+straniUlazSredstvaDf <- read.csv(straniUlazSredstvaPath, fileEncoding = "UTF-8")
+straniUlazPutniciDf <- read.csv(straniUlazPutniciPath, fileEncoding = "UTF-8")
+
+#učitavanje fundamenata
+
+fundamentiARNTPath <- "fundamenti/ARNT_fundamenti.csv"
+fundamentiHIMRPath <- "fundamenti/HIMR_fundamenti.csv"
+fundamentiMAISPath <- "fundamenti/MAIS_fundamenti.csv"
+fundamentiRIVPPath <- "fundamenti/RIVP_fundamenti.csv"
+
+
+ARNTFundamentiDf <- read.csv(fundamentiARNTPath, fileEncoding = "UTF-8")
+HIMRFundamentiDf <- read.csv(fundamentiHIMRPath, fileEncoding = "UTF-8")
+MAISFundamentiDf <- read.csv(fundamentiMAISPath, fileEncoding = "UTF-8")
+RIVPFundamentiDf <- read.csv(fundamentiRIVPPath, fileEncoding = "UTF-8")
+
+
+```
+\newpage
+# Uvod
+Hrvatska je omiljena turistička destinacija zbog svoje obale i otoka te privlači mnogo turista svake godine. Turizam predstavlja važan segment u ekonomiji Hrvatske. Zemlja se ističe bogatom poviješću, kulturom i raznolikim prirodnim ljepotama, što ju čini atraktivnom za različite turiste.
+Kada je riječ o mobilnosti turista, uglavnom se koriste avioni ili automobili, kao što ćemo i vidjeti iz grafova, no postoje i druge opcije, kao što su autobusi, vlakovi ili trajekti. Hrvatska ima dobro razvijenu mrežu cesta i autocesta, što olakšava kretanje unutar zemlje.
+
+U ovome projektnome zadatku opisati ćemo mobilnost turista u Hrvatskoj kroz godine podijeljene na kvartale. Mobilnost je izražena kao broj graničnih prijelaza uz dodatne informacije radi li se o domaćem ili stranom turistu te korištenom prijevoznom sredstvu. Zatim ćemo se baviti prihodima od prodaje i dobitom četiri velika poduzeća u Hrvatskoj: Arena Hospitality Group d.d., Imperial Riviera d.d., Maistra d.d. te Valamar Riviera d.d. Podaci koje analiziramo su iz perioda od 2013. do 2022.
+
+Isražit ćemo razlike među vrstama graničnih prijelaza i promotriti na koji način dan u tjednu te mjesec utječe na broj graničnih prijelaza.
+Nadamo se uočiti sezonalnosti u fundamentima turističkoh tvrtki i objasniti njihovu vezu s brojem graničnih prijelaza. Također želimo objanisniti dnevna kretanja cijene indeksa CROBEXturist pomoću prijelaza turista preko granica. Isto tako nas zanima postoje li razlike u samim kvartalima te može li se pokazati veza između broja prodaja i godine u kojoj su ostvarene.
+\newpage
+
+# Analiza
+## Putnici i sredstva
+Donje prikazane tablice služe kako bi dobili uvid s kakvim podacima radimo. Izvedena je osnovna analiza svakog stupca. Bavimo se cestovnim, željezničkim, riječnim te pomorskim prometom. Ovih par redaka nam je dovoljno da uočimo trend razdiobe korištenih prijevoznih sredstava. Zanimljivo je kako se dosta rijetko koristi riječni promet.
+
+```{r}
+kable(head(domaciIzlazPutniciDf))
+summary(domaciIzlazPutniciDf)
+
+summary(domaciUlazPutniciDf)
+
+```
+
+```{r, include=FALSE}
+dfZbrojSvihVrsta <- domaciUlazPutniciDf
+
+
+dfZbrojSvihVrsta$Cestovni <- domaciIzlazPutniciDf$Cestovni + domaciUlazPutniciDf$Cestovni + straniIzlazPutniciDf$Cestovni + straniUlazPutniciDf$Cestovni
+
+dfZbrojSvihVrsta$Željeznički<- domaciIzlazPutniciDf$Željeznički + domaciUlazPutniciDf$Željeznički + straniIzlazPutniciDf$Željeznički + straniUlazPutniciDf$Željeznički
+
+dfZbrojSvihVrsta$Riječni <- domaciIzlazPutniciDf$Riječni + domaciUlazPutniciDf$Riječni + straniIzlazPutniciDf$Riječni + straniUlazPutniciDf$Riječni
+
+dfZbrojSvihVrsta$Pomorski <- domaciIzlazPutniciDf$Pomorski + domaciUlazPutniciDf$Pomorski + straniIzlazPutniciDf$Pomorski + straniUlazPutniciDf$Pomorski
+
+dfZbrojSvihVrsta$Zračni <- domaciIzlazPutniciDf$Zračni + domaciUlazPutniciDf$Zračni + straniIzlazPutniciDf$Zračni + straniUlazPutniciDf$Zračni
+
+dfZbrojSvihVrsta$UKUPNO <- domaciIzlazPutniciDf$UKUPNO + domaciUlazPutniciDf$UKUPNO + straniIzlazPutniciDf$UKUPNO + straniUlazPutniciDf$UKUPNO
+```
+\newpage
+Prikažimo ukupan broj graničnih prijelaza i koliki udio čine koje prijevozno sredstvo.
+```{r}
+zbrojSvihVrstaPoMjesecu <- aggregate(dfZbrojSvihVrsta[,-1],
+                                     list(month(dfZbrojSvihVrsta$X)),
+                                     function(x){round(mean(x),0)})
+
+pivot <- pivot_longer(zbrojSvihVrstaPoMjesecu,
+                      Cestovni:Zračni,
+                      names_to = "Sredstvo",
+                      values_to = "brojPrelazaka")
+
+ggplot(pivot, aes(x = Group.1, y = brojPrelazaka, fill = Sredstvo)) + 
+              geom_bar(stat = 'identity') + labs(x = 'mjesec', y = 'broj prijelaza')
+```
+Možemo primjetiti kako cestovni promet čini skoro sav promet preko hrvatskih granica. Zračni promet se nešto češće koristi u 3. kvartalu dok su ostala prijevozna sredstva gotovo zanemariva. Isto tako prijelazi preko granice najviše se događaju u 7. mjesecu odnosno "srcu sezone".
+
+\newpage
+Slično kao i u gornjem grafu zanima nas broj prijelaza i udio sredstava u odnosu na dan u tjednu.
+```{r}
+zbrojSvihVrstaPoDanuUTjednu <- aggregate(dfZbrojSvihVrsta[,-1],
+                                         list(wday(dfZbrojSvihVrsta$X)),
+                                         function(x){round(mean(x),0)})
+
+pivot <- pivot_longer(zbrojSvihVrstaPoDanuUTjednu,
+                      Cestovni:Zračni,
+                      names_to = "Sredstvo",
+                      values_to = "brojPrelazaka")
+
+pivot$Group.1[pivot$Group.1 == 1] = 8
+pivot$Group.1 = pivot$Group.1 - 1
+ggplot(pivot, aes(x = Group.1, y = brojPrelazaka, fill = Sredstvo)) +
+              geom_bar(stat = 'identity') + labs(x = 'dan u tjednu', y = 'broj prijelaza')
+```
+Kao što smo mogli i pretpostaviti najveći broj prijelaza se događa preko vikenda. Isto tako iz ovoga grafa možemo zaključiti da je najbolji dan za izbjeći gužvu utorak.
+
+```{r, include=FALSE}
+
+domaciIzlazPutniciPoMjesecu = aggregate(domaciIzlazPutniciDf[,-1],list(month(domaciIzlazPutniciDf$X)),function(x){round(mean(x),0)})
+domaciUlazPutniciPoMjesecu = aggregate(domaciUlazPutniciDf[,-1],list(month(domaciUlazPutniciDf$X)),function(x){round(mean(x),0)})
+```
+
+```{r, include=FALSE}
+dIzMon <- ggplot(domaciIzlazPutniciPoMjesecu, aes(Group.1, UKUPNO)) + geom_bar(stat = "identity") + labs(x = "Mjesec", y = "Broj izlaza", title = "Domaci izlaz po mjesecu")
+dUlMon <- ggplot(domaciUlazPutniciPoMjesecu, aes(Group.1, UKUPNO)) + geom_bar(stat = "identity") + labs(x = "Mjesec", y = "Broj ulaza", title = "Domaci ulaz po mjesecu")
+```
+
+```{r, include=FALSE}
+domaciIzlazPutniciPoDanuUTjednu = aggregate(domaciIzlazPutniciDf[,-1],list(wday(domaciIzlazPutniciDf$X)), function(x){round(mean(x),0)})
+domaciUlazPutniciPoDanuUTjednu = aggregate(domaciUlazPutniciDf[,-1],list(wday(domaciUlazPutniciDf$X)),function(x){round(mean(x),0)})
+```
+
+```{r, include=FALSE}
+domaciIzlazPutniciPoDanuUTjednu[1, 1] = "ned"
+domaciIzlazPutniciPoDanuUTjednu[2, 1] = "pon"
+domaciIzlazPutniciPoDanuUTjednu[3, 1] = "uto"
+domaciIzlazPutniciPoDanuUTjednu[4, 1] = "sri"
+domaciIzlazPutniciPoDanuUTjednu[5, 1] = "cet"
+domaciIzlazPutniciPoDanuUTjednu[6, 1] = "pet"
+domaciIzlazPutniciPoDanuUTjednu[7, 1] = "sub"
+domaciIzlazPutniciPoDanuUTjednu = rbind(domaciIzlazPutniciPoDanuUTjednu, domaciIzlazPutniciPoDanuUTjednu[1,])
+domaciIzlazPutniciPoDanuUTjednu = domaciIzlazPutniciPoDanuUTjednu[-1,]
+domaciIzlazPutniciPoDanuUTjednu$Group.1 = factor(domaciIzlazPutniciPoDanuUTjednu$Group.1, levels = domaciIzlazPutniciPoDanuUTjednu$Group.1)
+
+domaciUlazPutniciPoDanuUTjednu[1, 1] = "ned"
+domaciUlazPutniciPoDanuUTjednu[2, 1] = "pon"
+domaciUlazPutniciPoDanuUTjednu[3, 1] = "uto"
+domaciUlazPutniciPoDanuUTjednu[4, 1] = "sri"
+domaciUlazPutniciPoDanuUTjednu[5, 1] = "cet"
+domaciUlazPutniciPoDanuUTjednu[6, 1] = "pet"
+domaciUlazPutniciPoDanuUTjednu[7, 1] = "sub"
+domaciUlazPutniciPoDanuUTjednu = rbind(domaciUlazPutniciPoDanuUTjednu, domaciUlazPutniciPoDanuUTjednu[1,])
+domaciUlazPutniciPoDanuUTjednu = domaciUlazPutniciPoDanuUTjednu[-1,]
+domaciUlazPutniciPoDanuUTjednu$Group.1 = factor(domaciUlazPutniciPoDanuUTjednu$Group.1, levels = domaciUlazPutniciPoDanuUTjednu$Group.1)
+
+```
+
+```{r, include=FALSE}
+#sezonalnosti u danima u tjednu kod domaćih putnika
+
+dIzDow <- ggplot(domaciIzlazPutniciPoDanuUTjednu, aes(Group.1,UKUPNO)) + geom_bar(stat = "identity") + labs(x = "Dan u tjednu", y = "broj izlaza", title = "Domaci izlaz po danu u tjednu")
+dUlDow <- ggplot(domaciUlazPutniciPoDanuUTjednu, aes(Group.1,UKUPNO)) + geom_bar(stat = "identity") + labs(x = "Dan u tjednu", y = "broj ulaza", title = "Domaci ulaz po danu u tjednu")
+
+```
+\newpage
+Mjesečna razdioba stranih ulazaka i izlazaka praktički je jednaka, mali brojevi početkom godine s porastom u 6. mjesecu i potpunim skokom u visine u 7. i 8. mjesecu te smanjivanje u zadnjim mjesecima godine. Sezonalnosti u mjesecima kod domaćih putnika, najveće frekvencije izlazaka mogu se primjetiti na početku ljetne sezone u 6. mjesecu i sredinom sezone u 8. Što se tiče ulazaka njihov broj raste kroz godinu i doseže vrhunac u 8. mjesecu, relativno naglo padne u 9. i ponovno poskoči u 10. mjesecu.
+
+```{r, include=FALSE}
+#sezonalnosti u mjesecima
+straniIzlazPutniciPoMjesecu = aggregate(straniIzlazPutniciDf[,-1],list(month(straniIzlazPutniciDf$X)),function(x){round(mean(x),0)})
+straniUlazPutniciPoMjesecu = aggregate(straniUlazPutniciDf[,-1],list(month(straniUlazPutniciDf$X)),function(x){round(mean(x),0)})
+```
+
+```{r, include=FALSE}
+
+sIzMon <- ggplot(straniIzlazPutniciPoMjesecu, aes(Group.1, UKUPNO)) + geom_bar(stat = "identity") + labs(x = "Mjesec", y = "Broj izlaza", title = "Strani izlaz po mjesecu")
+sUlMon <- ggplot(straniUlazPutniciPoMjesecu, aes(Group.1, UKUPNO)) + geom_bar(stat = "identity") + labs(x = "Mjesec", y = "Broj ulaza", title = "Strani ulaz po mjesecu")
+
+
+```
+
+```{r, include=FALSE}
+#sezonalnosti u danima u tjednu
+
+straniIzlazPutniciPoDanuUTjednu = aggregate(straniIzlazPutniciDf[,-1],list(wday(straniIzlazPutniciDf$X)), function(x){round(mean(x),0)})
+straniUlazPutniciPoDanuUTjednu = aggregate(straniUlazPutniciDf[,-1],list(wday(straniUlazPutniciDf$X)),function(x){round(mean(x),0)})
+```
+
+```{r, include=FALSE}
+straniIzlazPutniciPoDanuUTjednu[1, 1] = "ned"
+straniIzlazPutniciPoDanuUTjednu[2, 1] = "pon"
+straniIzlazPutniciPoDanuUTjednu[3, 1] = "uto"
+straniIzlazPutniciPoDanuUTjednu[4, 1] = "sri"
+straniIzlazPutniciPoDanuUTjednu[5, 1] = "cet"
+straniIzlazPutniciPoDanuUTjednu[6, 1] = "pet"
+straniIzlazPutniciPoDanuUTjednu[7, 1] = "sub"
+straniIzlazPutniciPoDanuUTjednu = rbind(straniIzlazPutniciPoDanuUTjednu, straniIzlazPutniciPoDanuUTjednu[1,])
+straniIzlazPutniciPoDanuUTjednu = straniIzlazPutniciPoDanuUTjednu[-1,]
+straniIzlazPutniciPoDanuUTjednu$Group.1 = factor(straniIzlazPutniciPoDanuUTjednu$Group.1, levels = straniIzlazPutniciPoDanuUTjednu$Group.1)
+
+straniUlazPutniciPoDanuUTjednu[1, 1] = "ned"
+straniUlazPutniciPoDanuUTjednu[2, 1] = "pon"
+straniUlazPutniciPoDanuUTjednu[3, 1] = "uto"
+straniUlazPutniciPoDanuUTjednu[4, 1] = "sri"
+straniUlazPutniciPoDanuUTjednu[5, 1] = "cet"
+straniUlazPutniciPoDanuUTjednu[6, 1] = "pet"
+straniUlazPutniciPoDanuUTjednu[7, 1] = "sub"
+straniUlazPutniciPoDanuUTjednu = rbind(straniUlazPutniciPoDanuUTjednu, straniUlazPutniciPoDanuUTjednu[1,])
+straniUlazPutniciPoDanuUTjednu = straniUlazPutniciPoDanuUTjednu[-1,]
+straniUlazPutniciPoDanuUTjednu$Group.1 = factor(straniUlazPutniciPoDanuUTjednu$Group.1, levels = straniUlazPutniciPoDanuUTjednu$Group.1)
+
+
+```
+
+```{r, include=FALSE}
+
+sIzDow <- ggplot(straniIzlazPutniciPoDanuUTjednu, aes(Group.1,UKUPNO)) + geom_bar(stat = "identity") + labs(x = "Dan u tjednu", y = "broj izlaza", title = "Strani izlaz po danu u tjednu")
+sUlDow <- ggplot(straniUlazPutniciPoDanuUTjednu, aes(Group.1,UKUPNO)) + geom_bar(stat = "identity") + labs(x = "Dan u tjednu", y = "broj ulaza", title = "Strani ulaz po danu u tjednu")
+
+```
+
+```{r}
+grid.arrange(dUlMon,dIzMon,sUlMon,sIzMon, nrow = 2, ncol = 2)
+```
+\newpage
+```{r}
+grid.arrange(dUlDow,dIzDow,sUlDow,sIzDow, nrow = 2, ncol = 2)
+```
+
+
+Broj izlazaka je malen na početku i kraju tjedna, od srijede raste i doseže vrhunac petkom, slična stvar je i kod ulazaka, iako ih vikendom ima više nego početkom tjedna. Izlaz stranih putnika raste kako tjedan napreduje i doseže vrhunac subotom i onda se spušta na niske razine u nedjelju.
+
+## Fundamenti
+Slijedeći tip podataka kojima se bavimo su fundamenti, prihodi, broj prodaja i dobit turističkih tvrtki. Analizirati ćemo njihove prihode po kvartalima te pitati se postoje li razlike među kvartalima te kako se mijenjaju kvartali kroz godine.
+```{r}
+summary(ARNTFundamentiDf)
+kable(head(ARNTFundamentiDf))
+```
+
+Pogledajmo prosječne zarade po kvartalu.
+```{r}
+ARNTFundamentPoKvartalu <- aggregate(ARNTFundamentiDf[,c(-1,-2,-3)],
+                                     list(ARNTFundamentiDf$Quarter),
+                                     function(x){round(mean(x),0)})
+ARNTFundamentPoKvartalu$tvrtka = 'ARNT'
+HIMRFundamentPoKvartalu <- aggregate(HIMRFundamentiDf[,c(-1,-2,-3)],
+                                     list(HIMRFundamentiDf$Quarter),
+                                     function(x){round(mean(x),0)})
+HIMRFundamentPoKvartalu$tvrtka = 'HIMR'
+MAISFundamentPoKvartalu <- aggregate(MAISFundamentiDf[,c(-1,-2,-3)],
+                                     list(MAISFundamentiDf$Quarter),
+                                     function(x){round(mean(x),0)})
+MAISFundamentPoKvartalu$tvrtka = 'MAIS'
+RIVPFundamentPoKvartalu <- aggregate(RIVPFundamentiDf[,c(-1,-2,-3)],
+                                     list(RIVPFundamentiDf$Quarter)
+                                     ,function(x){round(mean(x),0)})
+RIVPFundamentPoKvartalu$tvrtka = 'RIVP'
+sviFundamentiPoKvartalu = rbind(ARNTFundamentPoKvartalu,
+                                HIMRFundamentPoKvartalu,
+                                MAISFundamentPoKvartalu,
+                                RIVPFundamentPoKvartalu)
+ggplot(data=sviFundamentiPoKvartalu, aes(x=Group.1, y=Earnings, fill=tvrtka)) +
+             geom_bar(stat="identity", position=position_dodge()) + labs(x = "Kvartal", y="Earnings")
+```
+
+Možemo primjetiti kako profit ostvaren u trećem kvartalu omogućava preživljavanje kompanija kroz ostala tri kvartala. Štoviše, možemo reći da se živi i umire u trećem kvartalu što upućuje na ovisnost o ljetnom turizmu. Tu dominaciju trećeg kvartala ćemo nastaviti uočavatai i u ostatku dokumenta.
+
+Sljedeći graf prikazuje zaradu svih tvrtki kroz godine.
+
+```{r}
+ARNTFundamentPoGodini <- aggregate(ARNTFundamentiDf[,c(-1,-3)],
+                                   list(ARNTFundamentiDf$Year),
+                                   function(x){round(mean(x),0)})
+ARNTFundamentPoGodini$tvrtka = 'ARNT'
+HIMRFundamentPoGodini <- aggregate(HIMRFundamentiDf[,c(-1,-3)],
+                                   list(HIMRFundamentiDf$Year),
+                                   function(x){round(mean(x),0)})
+HIMRFundamentPoGodini$tvrtka = 'HIMR'
+MAISFundamentPoGodini <- aggregate(MAISFundamentiDf[,c(-1,-3)],
+                                   list(MAISFundamentiDf$Year),
+                                   function(x){round(mean(x),0)})
+MAISFundamentPoGodini$tvrtka = 'MAIS'
+RIVPFundamentPoGodini <- aggregate(RIVPFundamentiDf[,c(-1,-3)],
+                                   list(RIVPFundamentiDf$Year),
+                                   function(x){round(mean(x),0)})
+RIVPFundamentPoGodini$tvrtka = 'RIVP'
+sviFundamentiPoGodini = rbind(ARNTFundamentPoGodini,
+                              HIMRFundamentPoGodini,
+                              MAISFundamentPoGodini,
+                              RIVPFundamentPoGodini)
+ggplot(data=sviFundamentiPoGodini, aes(x=Group.1, y=Earnings, fill=tvrtka)) +
+              geom_bar(stat="identity", position=position_dodge()) + labs(x = "Godina", y="Earnings")
+
+```
+
+Kroz godine se primjećuje lagani rast profita od 2013. do 2019. kada nastupa COVID-19 i profiti su u debelom minusu. 2021. je godina oporavka u kojoj se još uvijek osjete posljedice dok se 2022. ostvaruju rekordni profiti. Pretpostavljamo da je ljudima nedostajalo putovanje.
+
+```{r, include=FALSE}
+#head(ARNTFundamentiDf)
+ARNTFundamentiDf$Quarter <- as.factor(ARNTFundamentiDf$Quarter)
+HIMRFundamentiDf$Quarter <- as.factor(HIMRFundamentiDf$Quarter)
+RIVPFundamentiDf$Quarter <- as.factor(RIVPFundamentiDf$Quarter)
+MAISFundamentiDf$Quarter <- as.factor(MAISFundamentiDf$Quarter)
+ggplot(ARNTFundamentiDf, aes(x = Year, y = Earnings, fill = Quarter )) + geom_bar(stat = "identity", position = "dodge2", )
+qARNT <- ggplot(ARNTFundamentiDf, aes(x = Year, y = Earnings, fill = Quarter )) + geom_bar(stat = "identity", position = "dodge2", )
+qHIMR <- ggplot(HIMRFundamentiDf, aes(x = Year, y = Earnings, fill = Quarter )) + geom_bar(stat = "identity", position = "dodge2", )
+qMAIS <- ggplot(MAISFundamentiDf, aes(x = Year, y = Earnings, fill = Quarter )) + geom_bar(stat = "identity", position = "dodge2", )
+qRIVP <- ggplot(RIVPFundamentiDf, aes(x = Year, y = Earnings, fill = Quarter )) + geom_bar(stat = "identity", position = "dodge2", )
+
+grid.arrange(qARNT,qHIMR,qMAIS,qRIVP, nrow = 2, ncol = 2)
+```
+
+S obzirom na to da se kod sve četiri tvrtke primjećuju zapravo isti trendovi odlučili smo se uzeti samo jednu tvrtku i nad njom provesti analizu statističkim metodama.
+Odabrani podaci su prikazani na donjem grafu.
+```{r}
+ARNTExtendedDf$Quarter <- as.factor(ARNTExtendedDf$Quarter)
+ggplot(ARNTExtendedDf, aes(x = Year, y = Sales, fill = Quarter )) + geom_bar(stat = "identity", position = "dodge2", )
+
+```
+
+## Veza prometa na graničnim prijelazima s fundamentima poduzeća
+
+Za daljnju analizu ograničavamo se na podatke o ulasku stranih i prihode od prodaje poduzeće Arena Hospitality Group d.d.
+
+```{r, include=FALSE}
+straniUlazPutniciDf$Year = year(straniUlazPutniciDf$X)
+straniUlazPutniciDf$Quarter = quarter(straniUlazPutniciDf$X)
+
+straniUlazPutniciAgg = aggregate(straniUlazPutniciDf[-c(1,8,9)], by = list(straniUlazPutniciDf$Year, straniUlazPutniciDf$Quarter), FUN = sum)
+
+colnames(straniUlazPutniciAgg)[1] <- "Year"
+colnames(straniUlazPutniciAgg)[2] <- "Quarter"
+
+putnici.fundamenti.data = merge(x = straniUlazPutniciAgg, y = ARNTFundamentiDf[-c(1)], by = c("Year", "Quarter"))
+
+putnici.fundamenti.data.d = dummy_cols(putnici.fundamenti.data, select_columns="Quarter")
+```
+
+Na sljedećem grafu prikazujemo korelaciju broja stranih ulazaka preko različitih vrsta graničnih prijelaza.
+
+```{r}
+reduced_data <- subset(putnici.fundamenti.data.d, select = c(3:7))
+corr_matrix = round(cor(reduced_data), 2)
+ggcorrplot(corr_matrix, hc.order = TRUE, type = "lower", lab = TRUE)
+```
+
+Očekivano postoji visoka  korelacija.
+Ova činjenica nas prisiljava na korištenje više jednostavnih linearnih regresija za svaku vrstu graničnog prijelaza umjesto jedne višestruke.
+
+```{r, fig.height=10, fig.width=10}
+
+plots <- list()
+
+for (x in 3:7) {
+    reduced_data <- subset(putnici.fundamenti.data.d, select = c(x, 11:14))
+    corr_matrix = round(cor(reduced_data), 2)
+
+    plots[[x-2]] = ggcorrplot(corr_matrix, hc.order = TRUE, type = "lower", lab = TRUE)
+}
+
+grid.arrange(grobs = plots, ncol=2)
+```
+
+Iz grafa korelacije broja prelazaka i indikatorskih varijabli kvartala naslučujemo da bi sezonalnost mogla biti prekrivena varijabla koja zapravo objašnjava i broj prelazaka i prihode od prodaje.
+Kako bi ispitali značajnost ovih regresora u objašnjanaju prihoda od prodaje, provodimo višestruku regresiju.
+
+```{r}
+fit = lm(Sales ~ Cestovni + Quarter_1 + Quarter_2 + Quarter_3 + Quarter_4, putnici.fundamenti.data.d)
+print(summary(fit))
+```
+
+Nažalost zbog visoke korelacije četvrtog kvartala i broja prelazaka preko granice, regresija rezultira singularnošću.
+Odlučujemo u nastavku zato provesti jednostavne regresije pa usporediti R-kvadrat vrijednosti.
+
+Prvo promatramo ovisnost prihoda od prodaje i broja ulazaka stranih turista.
+
+```{r, fig.height=20, fig.width=10}
+
+par(mfrow = c(5,2))
+for (regresor in names(putnici.fundamenti.data.d)[c(3:7)]) {
+    model = as.formula(paste("Sales ~", regresor))
+    fit = lm(model, putnici.fundamenti.data.d)
+    plot(putnici.fundamenti.data.d[[regresor]], putnici.fundamenti.data.d$Sales, xlab = regresor, ylab = "Prihodi od prodaje")
+    lines(putnici.fundamenti.data.d[[regresor]], fit$fitted.values, col='red')
+
+    plot(fit$residuals)
+}
+
+```
+
+Gornji grafovi reziduala su svakako zabrinjavajući. 
+Uočavamo heterogenost kod nekih i ne normalnost reziduala kod većine.
+
+```{r, fig.height=20, fig.width=10}
+
+putnici.fundamenti.data.recent = putnici.fundamenti.data.d[putnici.fundamenti.data.d$Year <= 2018,]
+putnici.fundamenti.data.recent = putnici.fundamenti.data.recent[-c(3,4), ]
+
+par(mfrow = c(5,2))
+fits <- list()
+
+for (i in c(3:7)) {
+    regresor = names(putnici.fundamenti.data.recent)[i]
+    model = as.formula(paste("Sales ~", regresor))
+    fits[[i-2]] <- lm(model, putnici.fundamenti.data.recent)
+    plot(putnici.fundamenti.data.recent[[regresor]],
+         putnici.fundamenti.data.recent$Sales,
+         xlab = regresor, ylab = "Prihodi od prodaje")
+    lines(putnici.fundamenti.data.recent[[regresor]], fits[[i-2]]$fitted.values, col='red')
+
+    plot(fits[[i-2]]$residuals)
+}
+
+for (i in c(1:5)) {
+    print(names(putnici.fundamenti.data.recent)[i+2])
+    print(lillie.test(rstandard(fits[[i]])))
+}
+
+```
+
+Izbacivanjem pandemijskih godina iz seta podataka, dobivamo normalno distribuirane reziduale.
+Ovo je naravno očekivani rezultat s obzirom da znam koliki je utjecaj pandemija imala na turistička poduzeća.
+Iznimka navedenom su riječnog prometa gdje svakako nultu hipotezu o normalnosti moramo staviti pod upitnik i željezniki promet gdje hipotezu svakako odbacujemo.
+Ove dvije vrste prometa nisu od prevelikog značaja za hrvatski turizam pa nas ova činjenica ne zabrinjava.
+
+```{r}
+for (i in c(1:5)) {
+    print(names(putnici.fundamenti.data.recent)[i+2])
+    print(summary(fits[[i]]))
+}
+
+```
+
+Sve vrste prometa su signifikantne za objašnjavanje prihoda od prodaje.
+Cestovni promet objašnjava najveći postotak varijabilnosti, a slijede ga zračni i pomorski.
+
+Sljedeće promatramo ovisnost prodaje o kvartalu.
+
+```{r, fig.height=20, fig.width=10}
+
+par(mfrow = c(4,2))
+fits <- list()
+
+for (i in c(1:4)) {
+    regresor = paste("Quarter_", i, sep="")
+    model = as.formula(paste("Sales ~ Quarter_", i, sep=""))
+    fits[[i]] <- lm(model, putnici.fundamenti.data.recent)
+    plot(putnici.fundamenti.data.recent[[regresor]],
+         putnici.fundamenti.data.recent$Sales,
+         xlab = paste("Kvartal", i),
+         ylab = "Prihodi od prodaje")
+    lines(putnici.fundamenti.data.recent[[regresor]], fits[[i]]$fitted.values, col='red')
+
+    plot(fits[[i]]$residuals)
+}
+
+for (i in c(1:4)) {
+    print(paste("Kvartal", i))
+    print(lillie.test(rstandard(fits[[i]])))
+}
+
+```
+
+Reziduali su normalno distribuirani za sve kvartale osim drugog pa nastavljamo dalje.
+
+```{r}
+for (i in c(1:4)) {
+    print(paste("Kvartal", i))
+    print(summary(fits[[i]]))
+}
+```
+
+Jedino je treći kvartal značajan za objašnjavanje prihoda od prodaje, ali njegova R-kvadrat vrijednost je manja od cestovnog i zračnog prometa.
+
+Na primjer loše ekonomsko stanje u Europi će se odraziti u broju prelazaka, a naravno da neće u indikatorskoj varijabli kvartala.
+
+## Distribucija ostvarenih prodaja turističke tvrtke Arena Hospitality Group d.d.
+### Parametarski pristup
+
+Odgovoriti ćemo na pitanje koja je distribucija ostvarenih prodaja jedne turističke tvrtke od 2002. do 2022. Krenimo s prikazom distribucije prodaja kroz godine.
+```{r}
+ggplot(ARNTExtendedDf,aes(x = Sales)) + geom_histogram(bins = 10) +
+  labs(title = "Distribucija ostvarenih prodaja", y = "frekvencija")
+```
+Vidimo da prodaja ima logaritamsku distribuciju.
+Ispis prosječnih prodaja:
+```{r}
+paste0("Prosjecna zarada od ostvarenih prodaja: ", mean(ARNTExtendedDf$Sales), " kn")
+```
+```{r}
+filter(ARNTExtendedDf, Quarter == 1) -> q1
+paste0("Prosjecna zarada od ostvarenih prodaja u prvom kvartalu: ", mean(q1$Sales), " kn")
+filter(ARNTExtendedDf, Quarter == 2) -> q2
+paste0("Prosjecna zarada od ostvarenih prodaja u drugom kvartalu: ", mean(q2$Sales), " kn")
+filter(ARNTExtendedDf, Quarter == 3) -> q3
+paste0("Prosjecna zarada od ostvarenih prodaja u trecem kvartalu: ", mean(q3$Sales), " kn")
+filter(ARNTExtendedDf, Quarter == 4) -> q4
+paste0("Prosjecna zarada od ostvarenih prodaja u cetvrtom kvartalu: ", mean(q4$Sales), " kn")
+
+```
+
+Provedimo test normalnosti nad našim podacima:
+```{r}
+lillie.test(q1$Sales)
+lillie.test(q2$Sales)
+lillie.test(q3$Sales)
+lillie.test(q4$Sales)
+```
+Nismo previše zadoviljni s normalnosti podataka. Idemo probati tranformirati podatake. Idemo procijeniti parametar $\lambda$ za Box Cox tranformaciju:
+```{r}
+b <- boxcox(lm(ARNTExtendedDf$Sales ~ 1))
+# Exact lambda
+lambda <- b$x[which.max(b$y)]
+lambda
+```
+Najbolji odabir bi bilo da primjenimo logaritamsku transformaciju nad podacima jer crtež indicira da je 0 unutar 95% intervala pouzdanosti optimalne lambde i zato što je procjena parametra jako bliza 0.
+```{r}
+transformirano <- ARNTExtendedDf
+transformirano$Sales <- log10(ARNTExtendedDf$Sales)
+ggplot(transformirano, aes(x=Sales)) + geom_histogram(bins = 10) +
+  labs(title = "Transformirani podaci ostvarenih prodaja sa log10")
+```
+Prikažimo sada distribuciju prodaja po kvartalima:
+```{r}
+filter(transformirano, Quarter == 1) %>% ggplot(aes(x = Sales)) + geom_histogram(bins = 10) +
+                                        labs(title = "Q1", y = "frekvencija")-> f1
+filter(transformirano, Quarter == 2) %>% ggplot(aes(x = Sales)) + geom_histogram(bins = 10) +
+                                        labs(title = "Q2", y = "frekvencija")-> f2
+filter(transformirano, Quarter == 3) %>% ggplot(aes(x = Sales)) + geom_histogram(bins = 10) +
+                                        labs(title = "Q3", y = "frekvencija")-> f3
+filter(transformirano, Quarter == 4) %>% ggplot(aes(x = Sales)) + geom_histogram(bins = 10) +
+                                        labs(title = "Q4", y = "frekvencija")-> f4
+grid.arrange(f1,f2,f3,f4, nrow = 2, ncol = 2)
+```
+Prikaz odstupanja distribucija plaća po kvratalima od normalne razdiobe:
+```{r}
+qq1 <- filter(transformirano, Quarter == 1)
+qq2 <- filter(transformirano, Quarter == 2)
+qq3 <- filter(transformirano, Quarter == 3)
+qq4 <- filter(transformirano, Quarter == 4)
+ggplot(qq1,aes(sample = Sales)) + geom_qq() + geom_qq_line() +
+        labs(x= "Normal theoretical", y = "Sales") + labs(title = "Q1") -> qqGraf1
+ggplot(qq2,aes(sample = Sales)) + geom_qq() + geom_qq_line() +
+        labs(x= "Normal theoretical", y = "Sales") + labs(title = "Q2") -> qqGraf2
+ggplot(qq3,aes(sample = Sales)) + geom_qq() + geom_qq_line() +
+        labs(x= "Normal theoretical", y = "Sales") + labs(title = "Q3") -> qqGraf3
+ggplot(qq4,aes(sample = Sales)) + geom_qq() + geom_qq_line() +
+        labs(x= "Normal theoretical", y = "Sales") + labs(title = "Q4") -> qqGraf4
+grid.arrange(qqGraf1,qqGraf2,qqGraf3,qqGraf4, nrow = 2, ncol = 2)
+```
+Provedimo sada Lilliforsov test:
+```{r}
+lillie.test(qq1$Sales)
+lillie.test(qq2$Sales)
+lillie.test(qq3$Sales)
+lillie.test(qq4$Sales)
+```
+Ovo su sada malo bolji podaci nego prije tranformacije. Prvi i četvrti kvartal nisu prošli test normalnosti, ali ćemo svejedno probati primjeniti ANOVU.
+```{r}
+boxplot(transformirano$Sales~transformirano$Quarter, xlab = "Kvartal", ylab = "Ostvarene prodaje")
+```
+Iz grafa možemo naslutiti da varijance iz trećeg i drugog kvartala odskaču u ondnosu na druge varijance.
+
+ANOVA pretpostavlja homoskedastičnost odnosno homogenost varijanci svih grupa. Kako bi to provjerili provodimo Bartlettov test:
+```{r}
+bartlett.test(transformirano$Sales~transformirano$Quarter)
+var(qq1$Sales)
+var(qq2$Sales)
+var(qq3$Sales)
+var(qq4$Sales)
+```
+Na razini značajnosti 0.05 zaključujemo da su vraijance homogene. Provodimo ANOVU za ove dvije hipoteze:
+$$H_0: \mu_1 = \mu_2 = \mu_3 = \mu_4$$
+$$H_1: \text{barem dvije sredine se razlikuju} $$
+
+```{r}
+anova_results <- aov(Sales~Quarter, data = transformirano)
+summary(anova_results)
+```
+Zaključujemo da se sigurno neke dvije sredine razlikuju na razini značajnosti 0.05. Probajmo izbaciti treći kvartal te ponovo provesti ANOVU:
+
+```{r}
+transformirano_no3 <- filter(transformirano, Quarter != 3)
+anova_results <- aov(Sales~Quarter, data = transformirano_no3)
+summary(anova_results)
+```
+I u ovome slučaju zaključujemo da se neke dvije sredine razlikuju na razini značajnosti 0.05. Izbaciti ćemo i treći kvartal te provesti ANOVU, odnosno mogli bismo provesti i f-test:
+```{r}
+transformirano_no23 <- filter(transformirano_no3, Quarter != 2)
+anova_results <- aov(Sales~Quarter, data = transformirano_no23)
+summary(anova_results)
+```
+Zaključujemo da prvi i četvrti kvartal imaju jednake sredine na razini značajnosti 0.05.
+
+### Neparametraski pristup
+
+Alternativni pristup ANOVI jest neparametarski Kruskal-Wallisov test. Želimo provesti ovaj test zbog toga što imamo mali broj podataka te podaci se ne podudaraju baš s normalnom razdiobom kako bi mi htjeli. Veličina svakog uzorka je veća od 5 pa je ovaj test primjenjiv.
+
+$$H_0: \text{medijani prodaja između kvartala se ne razlikuju} $$
+$$H_1: \text{barem dva medijana prodaja između kvartala se razlikuju} $$
+Moramo svakoj vrijednosti prodaja dodijeliti rang. Ako postoje više istih prodaja dodijeljuje im se prosjek. Provjeravamo imamo li iste vrijednosti.
+```{r}
+table(ARNTExtendedDf$Sales)
+```
+$$\text{moramo izračunati }H-statistiku: H = \frac{12}{n(n+1)}\sum_{i=1}^k{\frac{R_i^2}{n_i}-3(n+1)}$$
+
+```{r}
+salesSorted <- ARNTExtendedDf[order(ARNTExtendedDf$Sales),] 
+salesSorted$rang <- 1:nrow(salesSorted)
+salesSorted %>% group_by(Quarter) %>% summarise(suma = sum(rang)) -> rangSume
+
+Rsume <- 0
+for(i in 1:4){
+  Rsume <- Rsume + (rangSume[i,2]^2)/nrow(filter(salesSorted, Quarter == i))
+}
+
+H <- (12/(nrow(salesSorted)*(nrow(salesSorted)+1))) * Rsume[1,1] - 3*(nrow(salesSorted)+1) 
+H
+```
+Ova statistika se ravna po hi-kvadrat statistici sa k - 1 stupnjeva slobode, gdje je k broj kvartala.
+```{r}
+qchisq(.95, 3)
+```
+Vidimo da je H > hi-kvadrat odnosno odbacujemo $H_0$ u prilog $H_1$ na razini značajnosti 0.05, te zaključujemo da barem dva medijana prodaja između kvadrtala se razlikuju.
+
+
+## Analiza efikasnosti poduzeća
+
+Za dva poduzeća(Arena Hospitality d.d. i Imperial Riviera d.d.) analizirat ćemo vezu između ukupnog ulaska stranih putnika i prihoda od prodaje.
+Zatim ćemo koristiti bootstrap kako bi testirali jesu li nagibi pravaca nastali regresijom jednaki.
+Ovako provedenim testom se pitamo jesu li oba poduzeća jednako efikasna u pretvorbi potencijalnih potrošača u prihode od prodaje.
+
+```{r}
+
+putnici.fundamenti = merge(x = straniUlazPutniciAgg,
+                           y = ARNTFundamentiDf[-c(1, 4)],
+                           by = c("Year", "Quarter"))
+colnames(putnici.fundamenti)[colnames(putnici.fundamenti) == 'Sales'] <- 'SalesARNT'
+putnici.fundamenti = merge(x = putnici.fundamenti,
+                           y = HIMRFundamentiDf[-c(1, 4)],
+                           by = c("Year", "Quarter"))
+colnames(putnici.fundamenti)[colnames(putnici.fundamenti) == 'Sales'] <- 'SalesHIMR'
+set.seed(0)
+b1dif_function <- function(data, indices) {
+    d <- data[indices,] 
+
+    fit1 <- lm('SalesARNT ~ UKUPNO', data=d)
+    fit2 <- lm('SalesHIMR ~ UKUPNO', data=d)
+
+    return(fit1$coefficients[[1]] - fit2$coefficients[[1]]) 
+}
+
+
+reps <- boot(data=putnici.fundamenti, statistic=b1dif_function, R=2000)
+
+plot(reps)
+```
+
+Iz histograma i QQ plota vidimo da su uzorci normalno distribuirani pa nastavljamo dalje.
+
+```{r}
+boot.ci(reps, type="bca")
+```
+
+Vidimo da nula nije unutar 95% intervala pouzdanosti pa odbacujemo nultu hipotezu o jednakoj efikasnosti poduzeća.
+
+
+## Analiza dnevnih kretanja cijene indeksa CROBEXturist
+
+```{r}
+CROBEXCijeneDf$Date <- as.Date(CROBEXCijeneDf$Date, format = "%Y-%m-%d")
+kable(head(CROBEXCijeneDf))
+summary(CROBEXCijeneDf)
+```
+Možemo vidjeti da je samo jedna cijena NA (not available) pa je možemo maknuti iz skupa podataka. Ne možemo na mjesto NA staviti srednju vrijednost ili medijan jer bi se onda moglo dogoditi da po našim podacima CROBEXturist 2013. godine vrijedi 2883.3 ili 3321.4 što bi bilo tri puta više nego što je tad vrijedio.
+
+
+```{r}
+CROBEXCijeneDf <- na.omit(CROBEXCijeneDf)
+
+```
+
+Imamo podatke o cijeni indeksa CROBEXturist iz 2416 dana od 21.2.2013. do 4.1.2022. Idemo vidjeti graf.
+```{r}
+ggplot(data=CROBEXCijeneDf, aes(x=Date, y=Price) ) + geom_line() + labs(x = 'datum', y = 'cijena')
+```
+
+Prikazat ćemo i jednu godinu (npr. 2016.).
+```{r}
+ggplot(data=subset(CROBEXCijeneDf, year(Date) == 2016), aes(x=Date, y=Price) ) + geom_line() + labs(x = 'datum', y = 'cijena')
+```
+
+Želimo vidjeti kakav utjecaj na dnevna kretanja indeksa CROBEXturist ima ulazak i izlazak turista na hrvatskim granicama. Idemo vidjeti primjer tablice prijelaza granice.
+```{r}
+kable(head(domaciIzlazPutniciDf))
+summary(domaciIzlazPutniciDf)
+
+dim(domaciIzlazPutniciDf)
+dim(CROBEXCijeneDf)
+```
+Vidimo da postoji 3595 redova podataka o prijelazu turista, a 2415 o cijeni indeksa. Prvi način koji nam pada na pamet za rješavanje tog problema je izbacivanje redova o prijelazu turista za datume u kojima nemamo cijenu indeksa. Time bi pogriješili jer bi linearna regresija u sljedećem primjeru bila kriva: recimo da 1.1.2015. u Hrvatsku uđe 1 000 000 turista i izađe 1 000, no za taj dan nemamo cijenu indeksa pa ovaj red izbacimo, a 2.1.2015. uđe  1 000 turista, a izađe 1 000 000- u takvom bi slučaju mogli zaključiti da cijene turističkog indeksa rastu izlaskom turista iz države što nema nikakvog smisla.
+Zbog toga ćemo koristiti linearnu interpolaciju- metodu aproksimacije podataka koje nemamo (npr. ako je 1.1.2016. cijena indeksa bila 1000, a 3.1.2016. cijena 1200, onda ćemo dodati podatak da je 2.1. cijena bila 1100). Interpolacija ne mora nužno dati točne podatke, ali s obzirom na volatilnost ovog indeksa, vjerojatnost je gotovo 0 da CROBEXturist u jednom danu doživi ogroman pad i onda koji dan kasnije ogroman rast nazad na sličnu vrijednost.
+
+```{r}
+startDateCROBEX <- min(CROBEXCijeneDf$Date)
+endDateCROBEX <- max(CROBEXCijeneDf$Date)
+
+CROBEXallDates <- CROBEXCijeneDf %>%
+  complete(Date = seq(from = startDateCROBEX, to = endDateCROBEX, by = "1 day"), fill = list(Price = NA))
+
+
+```
+Sad ćemo nad ovim podacima izvesti linearnu interpolaciju podataka.
+
+
+```{r}
+CROBEXallDates$Price <- na.approx(CROBEXallDates$Price)
+
+dim(CROBEXallDates)
+kable(head(CROBEXallDates))
+```
+Dimenzija CROBEXallDates je manja od dimenzije domaciIzlazPutniciDf.
+```{r}
+startDateCROBEX
+endDateCROBEX
+startDateDomaciIzlaz <- min(domaciIzlazPutniciDf$X)
+endDateDomaciIzlaz <- max(domaciIzlazPutniciDf$X)
+startDateDomaciIzlaz
+endDateDomaciIzlaz
+```
+Iz svake tablice podataka prijelaza granica ćemo morati izbaciti podatke od 1.1.2013. do 20.2.2013.
+
+```{r}
+domaciIzlazPutniciRemoved<- slice(domaciIzlazPutniciDf, 52:nrow(domaciIzlazPutniciDf))
+min(domaciIzlazPutniciRemoved$X)
+
+domaciUlazPutniciRemoved<- slice(domaciUlazPutniciDf, 52:nrow(domaciUlazPutniciDf))
+straniIzlazPutniciRemoved<- slice(straniIzlazPutniciDf, 52:nrow(straniIzlazPutniciDf))
+straniUlazPutniciRemoved<- slice(straniUlazPutniciDf, 52:nrow(straniUlazPutniciDf))
+
+```
+
+Na cijenu indeksa CROBEXturist utječu mnogi faktori kao npr. trenutno stanje na tržištu dionica, inflacija... pa bi analiza cijene indeksa dala krive rezultate jer je npr. 2014. mogla biti približno ista turistička godina kao 2017., ali je 2017. cijena 4 puta veća zbog drugih faktora. Kako bi taj problem izbjegli, dodat ćemo za regresora cijenu dionice prijašnjeg dana. Idemo najprije vidjeti kako se kreće promjena cijene indeksa.
+```{r, include=FALSE}
+CROBEXpriceChange <- data.frame(Date = CROBEXallDates$Date, PriceChange = numeric(nrow(CROBEXallDates))) 
+
+CROBEXpriceChange$PriceChange[1] <- 0
+  
+for (i in 2:nrow(CROBEXallDates)) {
+  CROBEXpriceChange$PriceChange[i] <- CROBEXallDates$Price[i] - CROBEXallDates$Price[i-1]
+}
+```
+
+```{r}
+ggplot(data=CROBEXpriceChange, aes(x=Date, y=PriceChange) ) + geom_line() + labs(x = 'datum', y = 'promjena cijene')
+```
+Pogledat ćemo histogram promjene cijene indeksa kroz sve godine.
+```{r}
+ggplot(data = CROBEXpriceChange, aes(x = PriceChange)) + geom_histogram(binwidth = 10) 
+  
+```
+Najprije ćemo napraviti podatke za jedan od regresora- cijenu prijašnjeg dana.
+```{r}
+CROBEXallDates$priceBefore<- c(NA,CROBEXallDates$Price[1:length(CROBEXallDates$Price)-1])
+
+```
+Idemo pogledati dnevnu promjenu cijene s obzirom na kretanja turista.
+```{r}
+g1 <- plot(domaciIzlazPutniciRemoved$UKUPNO, CROBEXallDates$Price, xlim = c(0, 100000))
+#g2 <- plot(domaciUlazPutniciRemoved$UKUPNO, CROBEXallDates$Price, xlim = c(0, 100000))
+#g3 <- plot(straniIzlazPutniciRemoved$UKUPNO, CROBEXallDates$Price, xlim = c(0, 100000))
+#g4 <- plot(straniUlazPutniciRemoved$UKUPNO, CROBEXallDates$Price, xlim = c(0, 100000))
+```
+
+U grafu ne vidimo linearnost i čini se da ove varijable same po sebi nemaju utjecaj na cijenu CROBEXturist indeksa. Isti zaključak bi izvukli iz ostala tri grafa kretanja ljudi.
+Spojit ćemo varijable u istu tablicu.
+```{r, include=FALSE}
+domaciIzlazPutniciRemoved$X <- as.Date(domaciIzlazPutniciRemoved$X, format = "%Y-%m-%d")
+domaciUlazPutniciRemoved$X <- as.Date(domaciUlazPutniciRemoved$X, format = "%Y-%m-%d")
+straniIzlazPutniciRemoved$X <- as.Date(straniIzlazPutniciRemoved$X, format = "%Y-%m-%d")
+straniUlazPutniciRemoved$X <- as.Date(straniUlazPutniciRemoved$X, format = "%Y-%m-%d")
+
+
+domaciIzlazPutniciRemoved<- domaciIzlazPutniciRemoved %>% rename(domaciIzlazPutniciUkupno = UKUPNO)
+domaciUlazPutniciRemoved<- domaciUlazPutniciRemoved %>% rename(domaciUlazPutniciUkupno = UKUPNO)
+straniIzlazPutniciRemoved<- straniIzlazPutniciRemoved %>% rename(straniIzlazPutniciUkupno = UKUPNO)
+straniUlazPutniciRemoved<- straniUlazPutniciRemoved %>% rename(straniUlazPutniciUkupno = UKUPNO)
+
+domaciIzlazPutniciRemoved<- domaciIzlazPutniciRemoved %>% rename(Date = X)
+domaciUlazPutniciRemoved<- domaciUlazPutniciRemoved %>% rename(Date = X)
+straniIzlazPutniciRemoved<- straniIzlazPutniciRemoved %>% rename(Date = X)
+straniUlazPutniciRemoved<- straniUlazPutniciRemoved %>% rename(Date = X)
+
+```
+
+
+```{r, include=FALSE}
+CROBEXallData<- merge(CROBEXallDates, domaciIzlazPutniciRemoved[ ,c("domaciIzlazPutniciUkupno","Date")], by ="Date")
+CROBEXallData<- merge(CROBEXallData, domaciUlazPutniciRemoved[ ,c("domaciUlazPutniciUkupno","Date")], by ="Date")
+CROBEXallData<- merge(CROBEXallData, straniIzlazPutniciRemoved[ ,c("straniIzlazPutniciUkupno","Date")], by ="Date")
+CROBEXallData<- merge(CROBEXallData, straniUlazPutniciRemoved[ ,c("straniUlazPutniciUkupno","Date")], by ="Date")
+
+head(CROBEXallData)
+```
+
+Provest ćemo linearnu regresiju.
+```{r, include=FALSE}
+lm_domaciIzlaz<- lm(Price ~ domaciIzlazPutniciUkupno, data = CROBEXallData)
+lm_domaciUlaz<- lm(Price ~ domaciUlazPutniciUkupno, data = CROBEXallData)
+lm_straniIzlaz<- lm(Price ~ straniIzlazPutniciUkupno, data = CROBEXallData)
+lm_straniUlaz<- lm(Price ~ straniUlazPutniciUkupno, data = CROBEXallData)
+```
+
+```{r}
+summary(lm_domaciIzlaz)
+summary(lm_domaciUlaz)
+summary(lm_straniIzlaz)
+summary(lm_straniUlaz)
+```
+Iz ovoga je jasno da ove 4 varijable zasebno nemaju (ili imaju neprimjetljivo malen utjecaj) na kretanje CROBEX indeksa.
+Probat ćemo provesti višestruku regresiju da vidimo hoćemo li dobiti korisne rezultate ukoliko ih spojimo i dodamo varijablu cijene indeksa prijašnjeg dana.
+```{r}
+lm_visestruka = lm(Price ~ domaciIzlazPutniciUkupno + domaciUlazPutniciUkupno + 
+                     straniIzlazPutniciUkupno + straniUlazPutniciUkupno  , data = CROBEXallData)
+
+summary(lm_visestruka)
+```
+Analizom podataka možemo zaključiti ono što smo uvidom u grafove i samim shvaćanjem kretanja cijena na tržištu kapitala već znali- cijena  indeksa ne može se predvidjeti kretanjem turista. Postoje mnogi drugi poznati i nepoznati faktori koji utječu na cijenu CROBEX-a.
+
+# Zaključak
+
+Analizom veze mobilnosti turista kroz Hrvatsku s uspješnosti hrvatskog turističkog sektora i cijenom dionica turističkih kompanija na Zagrebačkoj burzi došli smo do mnogih zanimljivih zaključaka. Zaključili smo da najviše ljudi prelazi granicu ljeti i većinom petkom, subotom ili nedjeljom. Najviše ljudi dolazi u Hrvatsku cestovnim prometom. Zaključujemo da prihode od prodaje možemo djelomično predviditi jednostavno kvartalom u kojem su nastali. 
+Ipak broj stranih ulazaka sadrži više informacija pa je i procjena prihoda bolja. Također smo vidjeli da se cijena indeksa CROBEXturist ne može predvidjeti analizom ulaska i izlaska iz Hrvatske, već ona ovisi i o raznim globalnim varijablama.
