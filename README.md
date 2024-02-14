@@ -8,7 +8,7 @@ This repository contains insights and findings from an in-depth analysis of the 
 
 ## Data Visualizations
 
-![Data Visualizations](visualization_overview.jpg)
+![Data Visualizations](visualization_overview.png)
 
 [Explore Visualizations](https://public.tableau.com/app/profile/ivan.kapusta/viz/VizPodLab3/Dashboard)
 
