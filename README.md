@@ -22,8 +22,8 @@ The visualizations provided offer a comprehensive overview of key trends and ins
 
 ## Contributors
 
-# Statistical Data analysis
+Statistical Data analysis
 - Ivan Kapusta, Antonio Lukić, David Supančić, Leon Stjepan Uroić
 
-# Data Visualization
+Data Visualization
 - Ivan Kapusta, Antonio Lukić
